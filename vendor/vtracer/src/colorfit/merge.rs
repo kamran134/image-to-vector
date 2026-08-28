@@ -18,7 +18,7 @@ fn flush(run: &mut Vec<Layer>, out: &mut Vec<Layer>) {
         0 => {}
         1 => out.push(run.pop().expect("run is non-empty")),
         _ => {
-            let paint = run[0].paint;
+            let paint = run[0].paint.clone();
             let masks: Vec<&RegionMask> = run.iter().map(|l| &l.mask).collect();
             let mask = RegionMask::union_all(&masks);
             out.push(Layer { paint, mask });

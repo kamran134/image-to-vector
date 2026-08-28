@@ -13,6 +13,7 @@
 //!
 //! [keying]: https://github.com/visioncortex/vtracer/blob/1.0.0-alpha.3/crates/vtracer/src/frontend/keying.rs
 
+pub mod gradient;
 pub mod metrics;
 pub mod profile;
 pub mod regularize;

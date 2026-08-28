@@ -409,6 +409,7 @@ dependencies = [
  "serde",
  "serde_json",
  "usvg 0.48.1",
+ "visioncortex",
  "vtracer",
 ]
 

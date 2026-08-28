@@ -61,7 +61,7 @@ pub fn compose_mosaic(
         let path = build_path(face, &fitted, &graph);
         if !path.is_empty() {
             doc.shapes.push(Shape {
-                paint: map.paints[face.region as usize],
+                paint: map.paints[face.region as usize].clone(),
                 path,
             });
         }

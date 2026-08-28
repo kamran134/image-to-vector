@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 vtracer.workspace = true
+visioncortex = "0.9.1"
 resvg = { version = "0.48", default-features = false, features = ["raster-images"] }
 usvg = "0.48"
 image = { version = "0.25", default-features = false }

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use i2v_core::profile::{AlphaMode, Profile, RegularizeSettings, TraceSettings};
+use i2v_core::profile::{AlphaMode, GradientSettings, Profile, RegularizeSettings, TraceSettings};
 use vtracer::ColorImage;
 
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp"];
@@ -52,6 +52,13 @@ struct Args {
     #[arg(long)]
     regularize: bool,
 
+    /// Detect an axis-aligned linear color gradient and emit it as a real
+    /// SVG <linearGradient> instead of flat bands
+    /// (i2v_core::gradient::GradientFitter). Needs vendor/vtracer's
+    /// Paint::Linear — see docs/SPEC.md §4.
+    #[arg(long)]
+    gradient: bool,
+
     /// Forwarded to vtracer::Config::simplify.
     #[arg(long)]
     simplify: Option<f64>,
@@ -92,10 +99,21 @@ fn profile_from_args(args: &Args) -> Result<Profile> {
         trace: TraceSettings {
             simplify: args.simplify,
             max_colors: args.max_colors,
+            // At the default color_precision (6), VTracer's own clustering
+            // can average a whole smooth gradient into one flat color
+            // before GradientFitter ever sees more than one layer to merge
+            // (measured, not assumed — docs/SPEC.md §4/§6). --gradient
+            // raises it so there's actually banding to detect.
+            color_precision: if args.gradient {
+                8
+            } else {
+                TraceSettings::default().color_precision
+            },
             ..TraceSettings::default()
         },
         alpha,
         regularize: args.regularize.then(RegularizeSettings::default),
+        gradient: args.gradient.then(GradientSettings::default),
     })
 }
 

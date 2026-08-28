@@ -54,7 +54,7 @@ impl LabelMap {
         let w = seg.width as usize;
         let h = seg.height as usize;
         let mut labels = vec![OUTSIDE; w * h];
-        let paints: Vec<Paint> = seg.layers.iter().map(|l| l.paint).collect();
+        let paints: Vec<Paint> = seg.layers.iter().map(|l| l.paint.clone()).collect();
 
         for (i, layer) in seg.layers.iter().enumerate() {
             let mask = &layer.mask;

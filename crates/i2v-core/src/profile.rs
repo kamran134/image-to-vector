@@ -7,6 +7,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use vtracer::{Config, Error, Pipeline};
 
+use crate::gradient::GradientFitter;
 use crate::regularize::RegularizePass;
 
 /// Which frontend traces the image. `Vanilla` is plain VTracer, unaware of
@@ -45,6 +46,33 @@ impl Default for RegularizeSettings {
             angle_tolerance: 2.0,
             min_length: 4.0,
             circle_relative_tolerance: 0.03,
+        }
+    }
+}
+
+/// Mirrors `GradientFitter`'s fields (`docs/SPEC.md` §4) — Module B, the one
+/// stage in this project that needed a fork rather than a plugin
+/// (`vendor/vtracer`, see VENDORED.md: `Paint::Linear` doesn't exist
+/// upstream). `None` = off, same "off is explicit" reasoning as
+/// `RegularizeSettings`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GradientSettings {
+    pub min_coverage: f64,
+    pub max_deviation: f64,
+    pub max_stops: usize,
+    pub min_distinct_colors: usize,
+    pub cross_axis_tolerance: f64,
+}
+
+impl Default for GradientSettings {
+    fn default() -> Self {
+        let d = GradientFitter::default();
+        Self {
+            min_coverage: d.min_coverage,
+            max_deviation: d.max_deviation,
+            max_stops: d.max_stops,
+            min_distinct_colors: d.min_distinct_colors,
+            cross_axis_tolerance: d.cross_axis_tolerance,
         }
     }
 }
@@ -92,6 +120,8 @@ pub struct Profile {
     /// carrying zeroed tolerances, which would silently no-op instead of
     /// stating "not requested" in the file.
     pub regularize: Option<RegularizeSettings>,
+    /// `None` = gradient detection off.
+    pub gradient: Option<GradientSettings>,
 }
 
 impl Profile {
@@ -128,6 +158,15 @@ impl Profile {
                 factor,
             } => crate::supersample::supersampled_alpha_pipeline(&cfg, *alpha_threshold, *factor)?,
         };
+        if let Some(g) = &self.gradient {
+            pipeline.color_fitters.push(Box::new(GradientFitter {
+                min_coverage: g.min_coverage,
+                max_deviation: g.max_deviation,
+                max_stops: g.max_stops,
+                min_distinct_colors: g.min_distinct_colors,
+                cross_axis_tolerance: g.cross_axis_tolerance,
+            }));
+        }
         if let Some(r) = &self.regularize {
             pipeline.curve_passes.push(Box::new(RegularizePass {
                 tolerance: r.tolerance,

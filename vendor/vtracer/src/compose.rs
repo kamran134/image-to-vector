@@ -102,7 +102,7 @@ fn compose_stacked_with(
         let path = fit_region(fitter, &layer.mask, passes);
         if !path.is_empty() {
             doc.shapes.push(Shape {
-                paint: layer.paint,
+                paint: layer.paint.clone(),
                 path,
             });
         }
@@ -122,7 +122,7 @@ pub fn compose_stacked(
         let path = fit_region(fitter, &layer.mask, passes);
         if !path.is_empty() {
             doc.shapes.push(Shape {
-                paint: layer.paint,
+                paint: layer.paint.clone(),
                 path,
             });
         }

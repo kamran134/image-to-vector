@@ -576,41 +576,6 @@ fn antialiased_edge_snaps_to_midline() {
     }
 }
 
-/// Sizes of the 4-connected components of a label map.
-fn component_sizes(labels: &[usize], w: usize, h: usize) -> Vec<usize> {
-    let mut seen = vec![false; labels.len()];
-    let mut sizes = Vec::new();
-    let mut stack = Vec::new();
-    for start in 0..labels.len() {
-        if seen[start] {
-            continue;
-        }
-        let mut size = 0;
-        seen[start] = true;
-        stack.push(start);
-        while let Some(i) = stack.pop() {
-            size += 1;
-            let (x, y) = (i % w, i / w);
-            for j in [
-                (x > 0).then(|| i - 1),
-                (x + 1 < w).then(|| i + 1),
-                (y > 0).then(|| i - w),
-                (y + 1 < h).then(|| i + w),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                if !seen[j] && labels[j] == labels[i] {
-                    seen[j] = true;
-                    stack.push(j);
-                }
-            }
-        }
-        sizes.push(size);
-    }
-    sizes
-}
-
 /// The snap must not bulldoze genuine detail: a pixel of the *other side's*
 /// color sitting across the boundary (here a bright pixel notching into the
 /// dark half) is not a mixture of the two region means, so the mixture gate

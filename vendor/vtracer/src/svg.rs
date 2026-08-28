@@ -56,11 +56,13 @@ impl SvgWriter {
             doc.width, doc.height
         );
 
+        write_defs(&mut out, &doc.shapes);
+
         if self.shorthands {
             self.write_grouped(&mut out, &doc.shapes);
         } else {
-            for shape in &doc.shapes {
-                self.write_path(&mut out, shape, true);
+            for (i, shape) in doc.shapes.iter().enumerate() {
+                self.write_path(&mut out, i, shape, true);
             }
         }
 
@@ -69,41 +71,39 @@ impl SvgWriter {
     }
 
     /// Emit shapes, grouping maximal runs of consecutive same-fill shapes into
-    /// a single `<g fill>` (preserving paint order).
+    /// a single `<g fill>` (preserving paint order). Two `Linear` paints
+    /// never group even if they'd render identically — each keeps its own
+    /// `url(#g{index})`, matched 1:1 against the `<defs>` `write_defs` wrote
+    /// for that same index.
     fn write_grouped(&self, out: &mut String, shapes: &[Shape]) {
         let mut i = 0;
         while i < shapes.len() {
-            let fill = shape_fill(&shapes[i]);
+            let fill = shape_fill(i, &shapes[i]);
             let mut j = i + 1;
-            while j < shapes.len() && shape_fill(&shapes[j]) == fill {
+            while j < shapes.len() && shape_fill(j, &shapes[j]) == fill {
                 j += 1;
             }
             let run = &shapes[i..j];
             if run.len() > 1 {
                 let _ = writeln!(out, "<g fill=\"{}\">", fill);
-                for shape in run {
-                    self.write_path(out, shape, false);
+                for (k, shape) in run.iter().enumerate() {
+                    self.write_path(out, i + k, shape, false);
                 }
                 out.push_str("</g>\n");
             } else {
-                self.write_path(out, &run[0], true);
+                self.write_path(out, i, &run[0], true);
             }
             i = j;
         }
     }
 
-    fn write_path(&self, out: &mut String, shape: &Shape, with_fill: bool) {
+    fn write_path(&self, out: &mut String, index: usize, shape: &Shape, with_fill: bool) {
         let d = self.encode_path(shape);
         if d.is_empty() {
             return;
         }
         if with_fill {
-            let _ = writeln!(
-                out,
-                "<path d=\"{}\" fill=\"{}\"/>",
-                d,
-                shape_fill(shape)
-            );
+            let _ = writeln!(out, "<path d=\"{}\" fill=\"{}\"/>", d, shape_fill(index, shape));
         } else {
             let _ = writeln!(out, "<path d=\"{}\"/>", d);
         }
@@ -118,10 +118,53 @@ impl SvgWriter {
     }
 }
 
-fn shape_fill(shape: &Shape) -> String {
-    match shape.paint {
+fn shape_fill(index: usize, shape: &Shape) -> String {
+    match &shape.paint {
         Paint::Solid(c) => c.to_hex_string(),
+        Paint::Linear { .. } => format!("url(#g{index})"),
     }
+}
+
+/// Emit one `<linearGradient>` per `Linear`-painted shape into a `<defs>`
+/// block, id'd by that shape's index in `doc.shapes` — the same index
+/// `shape_fill` uses to reference it back. `gradientUnits="userSpaceOnUse"`
+/// is required explicitly: SVG defaults a `<linearGradient>` to
+/// `objectBoundingBox` (0..1 fractions of the shape's own bbox), but
+/// `Paint::Linear`'s `x1/y1/x2/y2` are in the same absolute document
+/// coordinates every path's own `d` data already uses.
+fn write_defs(out: &mut String, shapes: &[Shape]) {
+    let gradients: Vec<(usize, &Shape)> = shapes
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches!(s.paint, Paint::Linear { .. }))
+        .collect();
+    if gradients.is_empty() {
+        return;
+    }
+    out.push_str("<defs>\n");
+    for (index, shape) in gradients {
+        let Paint::Linear { x1, y1, x2, y2, stops } = &shape.paint else {
+            unreachable!("filtered to Linear above");
+        };
+        let _ = writeln!(
+            out,
+            "<linearGradient id=\"g{index}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\">",
+            fmt_num(*x1, Some(3)),
+            fmt_num(*y1, Some(3)),
+            fmt_num(*x2, Some(3)),
+            fmt_num(*y2, Some(3)),
+        );
+        for (offset, color) in stops {
+            let _ = writeln!(
+                out,
+                "<stop offset=\"{}\" stop-color=\"{}\"/>",
+                fmt_num(offset.clamp(0.0, 1.0), Some(4)),
+                color.to_hex_string(),
+            );
+        }
+        out.push_str("</linearGradient>\n");
+    }
+    out.push_str("</defs>\n");
 }
 
 /// Streaming SVG-path encoder that tracks the current point.
@@ -404,6 +447,54 @@ mod tests {
             paint: Paint::Solid(Color::new(255, 0, 0)),
             path: MultiPath { subpaths: vec![sub] },
         }
+    }
+
+    fn gradient_shape(x1: f64, y1: f64, x2: f64, y2: f64, stops: Vec<(f64, Color)>) -> Shape {
+        use visioncortex::PointF64;
+        let p = |x, y| PointF64 { x, y };
+        let mut sub = SubPath::new();
+        sub.commands = vec![
+            PathCmd::MoveTo(p(0.0, 0.0)),
+            PathCmd::LineTo(p(10.0, 0.0)),
+            PathCmd::LineTo(p(10.0, 10.0)),
+            PathCmd::LineTo(p(0.0, 10.0)),
+            PathCmd::Close,
+        ];
+        Shape {
+            paint: Paint::Linear { x1, y1, x2, y2, stops },
+            path: MultiPath { subpaths: vec![sub] },
+        }
+    }
+
+    #[test]
+    fn linear_paint_emits_a_referenced_gradient_def() {
+        let doc = VectorDoc {
+            width: 10,
+            height: 10,
+            shapes: vec![gradient_shape(
+                0.0,
+                0.0,
+                10.0,
+                0.0,
+                vec![(0.0, Color::new(255, 0, 0)), (1.0, Color::new(0, 0, 255))],
+            )],
+        };
+        let svg = SvgWriter::default().write(&doc);
+        assert!(svg.contains("<defs>"), "{svg}");
+        assert!(
+            svg.contains("<linearGradient id=\"g0\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"10\" y2=\"0\">"),
+            "{svg}"
+        );
+        assert!(svg.contains("stop-color=\"#FF0000\""), "{svg}");
+        assert!(svg.contains("stop-color=\"#0000FF\""), "{svg}");
+        assert!(svg.contains("fill=\"url(#g0)\""), "{svg}");
+    }
+
+    #[test]
+    fn solid_paint_still_has_no_defs_block() {
+        let doc = VectorDoc { width: 10, height: 10, shapes: vec![square_shape()] };
+        let svg = SvgWriter::default().write(&doc);
+        assert!(!svg.contains("<defs>"), "{svg}");
     }
 
     #[test]
