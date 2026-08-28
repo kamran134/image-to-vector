@@ -51,10 +51,16 @@ fn count_distinct_fills(svg: &str) -> usize {
 
 fn main() -> Result<()> {
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("corpus");
+    const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp"];
     let mut entries: Vec<_> = std::fs::read_dir(&corpus)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_file())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| IMAGE_EXTS.contains(&e.to_lowercase().as_str()))
+        })
         .collect();
     entries.sort();
 
