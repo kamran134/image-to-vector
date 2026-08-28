@@ -1,0 +1,18 @@
+[package]
+name = "vtracer"
+version = "1.0.0-alpha.3-i2v.1"
+edition = "2024"
+license = "MIT"
+description = "Vendored, patched fork of visioncortex/vtracer 1.0.0-alpha.3 — see VENDORED.md"
+
+[lib]
+name = "vtracer"
+path = "src/lib.rs"
+
+[dependencies]
+visioncortex = "0.9.1"
+flo_curves = "0.8"
+
+[dev-dependencies]
+resvg = "0.45"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }

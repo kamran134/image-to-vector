@@ -21,7 +21,13 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # Scoped to our own crates, not --workspace: vendor/vtracer (a path
+        # dependency, deliberately not a workspace member — see
+        # vendor/vtracer/VENDORED.md) still gets its source lint-checked by
+        # Cargo when building against it either way, but its own remaining
+        # findings are suppressed at the crate root there, not re-litigated
+        # here.
+        run: cargo clippy -p i2v-core -p i2v-cli -p i2v-bench --all-targets -- -D warnings
       - name: build
         run: cargo build --workspace
       - name: test

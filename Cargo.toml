@@ -1,10 +1,16 @@
 [workspace]
 resolver = "2"
 members = ["crates/i2v-core", "crates/i2v-cli", "crates/i2v-bench"]
+# vendor/vtracer is a path dependency, deliberately NOT a workspace member:
+# `--workspace` commands (build/test/clippy) would otherwise lint and report
+# on vendored third-party source as if it were ours. `cargo test --manifest-path
+# vendor/vtracer/Cargo.toml` still runs its own suite directly.
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-vtracer = "=1.0.0-alpha.3"
+# Vendored fork, not crates.io — see vendor/vtracer/VENDORED.md for why
+# (Paint::Linear, docs/SPEC.md §4, needs to patch a type this crate owns).
+vtracer = { path = "vendor/vtracer" }
