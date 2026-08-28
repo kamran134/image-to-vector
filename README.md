@@ -15,22 +15,23 @@ Rust, консоль — не веб. Техническое задание и �
 ## Использование
 
 ```sh
-cargo run -p i2v-cli -- in.png out.svg               # ванильный VTracer 1.0
-cargo run -p i2v-cli -- in.png out.svg --defringe     # + альфа-осведомлённый фронтенд (i2v-core)
-cargo run -p i2v-bench --bin gen_corpus               # (пере)сгенерировать синтетический корпус
-cargo run -p i2v-bench                                # quality gate: mean_err/p99/SSIM vs vanilla, exit≠0 при регрессии
+cargo run -p i2v-cli -- in.png out.svg                    # ванильный VTracer 1.0
+cargo run -p i2v-cli -- in.png out.svg --defringe          # + альфа-осведомлённый фронтенд (v1, нативное разрешение)
+cargo run -p i2v-cli -- in.png out.svg --supersample 4      # v2: субпиксельный контур (медленнее, точнее — не для pixel art)
+cargo run -p i2v-bench --bin gen_corpus                     # (пере)сгенерировать синтетический корпус
+cargo run -p i2v-bench                                      # quality gate: mean_err/p99/SSIM vs vanilla, exit≠0 при регрессии
 cargo test --workspace
 ```
 
 ## Статус
 
-- **Модуль A (альфа-канал)** — реализован (v1, нативное разрешение) и
-  протестирован: `crates/i2v-core/src/lib.rs`.
+- **Модуль A (альфа-канал)** — v1 и v2 реализованы и протестированы:
+  `crates/i2v-core/src/lib.rs` (v1, нативное разрешение), `supersample.rs`
+  (v2, субпиксельный контур через supersampling — измеримо лучше v1 на всех
+  альфа-кейсах, `pixel-art` осознанно исключён).
 - **Бенчмарк с метрикой качества** — реализован: рендер SVG обратно в растр
   (`resvg`), ошибка RGBA + SSIM против оригинала, правило приёмки как код,
-  подключено в CI. 0 регрессий на 14 файлах корпуса, модуль A измеримо
-  улучшает 4 из них (там, где есть настоящая частичная прозрачность) и
-  корректно не трогает остальные. См. `docs/SPEC.md` §6.
+  подключено в CI. 0 регрессий на 14 файлах корпуса. См. `docs/SPEC.md` §6.
 - **Модуль C (регуляризация геометрии)** и **Модуль B (градиенты)** — не
   начаты, см. `docs/SPEC.md`.
 

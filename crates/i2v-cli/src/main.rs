@@ -5,7 +5,10 @@ use vtracer::{ColorImage, Config};
 
 /// PNG/JPG -> SVG, on top of VTracer 1.0. `--defringe` turns on i2v-core's
 /// alpha-aware frontend (see crates/i2v-core) instead of VTracer's own
-/// RGB-only clustering.
+/// RGB-only clustering. `--supersample N` (implies --defringe) traces at N×
+/// resolution with bilinear-interpolated alpha for a sub-pixel-accurate
+/// contour instead of one locked to the source pixel grid — skip it on
+/// pixel art, where a hard blocky edge is the point (see docs/SPEC.md §6).
 #[derive(Parser)]
 struct Args {
     input: PathBuf,
@@ -16,8 +19,13 @@ struct Args {
     #[arg(long)]
     defringe: bool,
 
+    /// Trace at N× resolution with bilinear alpha for a sub-pixel contour.
+    /// N=1 is equivalent to --defringe. Implies --defringe.
+    #[arg(long, value_name = "N")]
+    supersample: Option<u32>,
+
     /// Alpha at/above this value counts as inside the shape. Only used with
-    /// --defringe.
+    /// --defringe or --supersample.
     #[arg(long, default_value_t = 128)]
     alpha_threshold: u8,
 
@@ -47,7 +55,11 @@ fn main() -> anyhow::Result<()> {
         ..Config::default()
     };
 
-    let svg = if args.defringe {
+    let svg = if let Some(factor) = args.supersample {
+        let pipeline =
+            i2v_core::supersample::supersampled_alpha_pipeline(&cfg, args.alpha_threshold, factor)?;
+        pipeline.to_svg(&img)?
+    } else if args.defringe {
         let pipeline = i2v_core::alpha_pipeline(&cfg, args.alpha_threshold)?;
         pipeline.to_svg(&img)?
     } else {

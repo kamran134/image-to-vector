@@ -14,6 +14,7 @@
 //! [keying]: https://github.com/visioncortex/vtracer/blob/1.0.0-alpha.3/crates/vtracer/src/frontend/keying.rs
 
 pub mod metrics;
+pub mod supersample;
 
 use vtracer::frontend::Frontend;
 use vtracer::ir::Segmentation;
@@ -150,7 +151,7 @@ impl Frontend for AlphaFrontend {
 
 /// Zero out every mask pixel whose source-image alpha falls below
 /// `threshold`, then drop layers left with no foreground pixels at all.
-fn clip_to_alpha(seg: &mut Segmentation, img: &ColorImage, threshold: u8) {
+pub(crate) fn clip_to_alpha(seg: &mut Segmentation, img: &ColorImage, threshold: u8) {
     seg.layers.retain_mut(|layer| {
         let mask = &mut layer.mask;
         let (mw, mh) = (mask.width(), mask.height());
