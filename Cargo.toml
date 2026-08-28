@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["crates/i2v-core", "crates/i2v-cli", "crates/i2v-bench"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+vtracer = "=1.0.0-alpha.3"

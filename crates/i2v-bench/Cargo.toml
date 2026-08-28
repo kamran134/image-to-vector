@@ -1,0 +1,15 @@
+[package]
+name = "i2v-bench"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "i2v-bench"
+path = "src/main.rs"
+
+[dependencies]
+i2v-core = { path = "../i2v-core" }
+vtracer.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+anyhow = "1"
