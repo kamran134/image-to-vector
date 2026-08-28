@@ -8,7 +8,9 @@ use vtracer::{ColorImage, Config};
 /// RGB-only clustering. `--supersample N` (implies --defringe) traces at N×
 /// resolution with bilinear-interpolated alpha for a sub-pixel-accurate
 /// contour instead of one locked to the source pixel grid — skip it on
-/// pixel art, where a hard blocky edge is the point (see docs/SPEC.md §6).
+/// pixel art, where a hard blocky edge is the point. `--regularize` snaps
+/// near-circular contours to true circles and near-axis straight runs onto
+/// the axis (see docs/SPEC.md §3/§6 for what it does and doesn't touch).
 #[derive(Parser)]
 struct Args {
     input: PathBuf,
@@ -28,6 +30,11 @@ struct Args {
     /// --defringe or --supersample.
     #[arg(long, default_value_t = 128)]
     alpha_threshold: u8,
+
+    /// Snap near-circular contours to true circles and near-axis straight
+    /// runs onto horizontal/vertical (i2v_core::regularize::RegularizePass).
+    #[arg(long)]
+    regularize: bool,
 
     /// Forwarded to vtracer::Config::simplify.
     #[arg(long)]
@@ -55,17 +62,26 @@ fn main() -> anyhow::Result<()> {
         ..Config::default()
     };
 
-    let svg = if let Some(factor) = args.supersample {
-        let pipeline =
-            i2v_core::supersample::supersampled_alpha_pipeline(&cfg, args.alpha_threshold, factor)?;
-        pipeline.to_svg(&img)?
+    let mut pipeline = if let Some(factor) = args.supersample {
+        i2v_core::supersample::supersampled_alpha_pipeline(&cfg, args.alpha_threshold, factor)?
     } else if args.defringe {
-        let pipeline = i2v_core::alpha_pipeline(&cfg, args.alpha_threshold)?;
-        pipeline.to_svg(&img)?
+        i2v_core::alpha_pipeline(&cfg, args.alpha_threshold)?
     } else {
-        cfg.build()?.to_svg(&img)?
+        cfg.build()?
     };
 
+    if args.regularize {
+        pipeline
+            .curve_passes
+            .push(Box::new(i2v_core::regularize::RegularizePass {
+                tolerance: 1.0,
+                angle_tolerance: 2.0,
+                min_length: 4.0,
+                circle_relative_tolerance: 0.03,
+            }));
+    }
+
+    let svg = pipeline.to_svg(&img)?;
     std::fs::write(&args.output, svg)?;
     Ok(())
 }

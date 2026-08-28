@@ -14,6 +14,7 @@
 //! [keying]: https://github.com/visioncortex/vtracer/blob/1.0.0-alpha.3/crates/vtracer/src/frontend/keying.rs
 
 pub mod metrics;
+pub mod regularize;
 pub mod supersample;
 
 use vtracer::frontend::Frontend;

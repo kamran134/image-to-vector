@@ -18,6 +18,7 @@ Rust, консоль — не веб. Техническое задание и �
 cargo run -p i2v-cli -- in.png out.svg                    # ванильный VTracer 1.0
 cargo run -p i2v-cli -- in.png out.svg --defringe          # + альфа-осведомлённый фронтенд (v1, нативное разрешение)
 cargo run -p i2v-cli -- in.png out.svg --supersample 4      # v2: субпиксельный контур (медленнее, точнее — не для pixel art)
+cargo run -p i2v-cli -- in.png out.svg --regularize         # + окружности/оси, композируется с любым из выше
 cargo run -p i2v-bench --bin gen_corpus                     # (пере)сгенерировать синтетический корпус
 cargo run -p i2v-bench                                      # quality gate: mean_err/p99/SSIM vs vanilla, exit≠0 при регрессии
 cargo test --workspace
@@ -29,11 +30,15 @@ cargo test --workspace
   `crates/i2v-core/src/lib.rs` (v1, нативное разрешение), `supersample.rs`
   (v2, субпиксельный контур через supersampling — измеримо лучше v1 на всех
   альфа-кейсах, `pixel-art` осознанно исключён).
+- **Модуль C (регуляризация геометрии)** — реализован и измерен:
+  `regularize.rs`. Окружности + оси, 0 регрессий на всём корпусе; симметрия и
+  согласование радиусов архитектурно недоступны как `CurvePass`, не
+  реализованы (см. `docs/SPEC.md` §3).
 - **Бенчмарк с метрикой качества** — реализован: рендер SVG обратно в растр
   (`resvg`), ошибка RGBA + SSIM против оригинала, правило приёмки как код,
   подключено в CI. 0 регрессий на 14 файлах корпуса. См. `docs/SPEC.md` §6.
-- **Модуль C (регуляризация геометрии)** и **Модуль B (градиенты)** — не
-  начаты, см. `docs/SPEC.md`.
+- **Модуль B (градиенты)** — не начат, требует форка VTracer, см.
+  `docs/SPEC.md` §4/§6.
 
 ## Лицензия
 
