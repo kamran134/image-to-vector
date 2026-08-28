@@ -1,41 +1,51 @@
-//! Benchmark harness skeleton (docs/SPEC.md §7 / milestone M1).
+//! Benchmark harness (docs/SPEC.md §6 / milestone M5).
 //!
-//! Runs vanilla VTracer over every image in `corpus/` and prints path/color/
-//! size counts as a starting baseline table. Still missing, deliberately
-//! left for the next pass rather than faked: rendering the output SVG back
-//! to raster (resvg) and scoring it against the source by RGBA error/SSIM.
-//! Without that, this only tells you the output got smaller or had fewer
-//! paths — not whether it still looks right. Don't read anything from this
-//! tool as a "better than VTracer" result until that lands.
+//! For every image in `corpus/`, traces it with each candidate frontend,
+//! renders the resulting SVG back to raster (`i2v_core::metrics::render_svg`,
+//! via resvg) and scores it against the source: mean/p99 RGBA error and
+//! SSIM. `vanilla` is always run as the baseline every other candidate is
+//! compared to. A candidate PASSes a file only if its error/SSIM did not
+//! regress past a small tolerance — see `Verdict` — matching the acceptance
+//! rule in docs/SPEC.md §6: an improvement only counts if quality didn't
+//! drop.
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use i2v_core::metrics::{rgba_error, ssim};
 use vtracer::{ColorImage, Config};
 
-struct Stats {
-    name: String,
+struct Trace {
     paths: usize,
     colors: usize,
     bytes: usize,
+    mean_err: f64,
+    p99_err: f64,
+    ssim: f64,
 }
 
-fn trace_stats(path: &Path) -> Result<Stats> {
-    let decoded = image::open(path)?.to_rgba8();
-    let (width, height) = (decoded.width() as usize, decoded.height() as usize);
-    let img = ColorImage {
-        pixels: decoded.into_raw(),
-        width,
-        height,
+fn trace_and_score(candidate: &str, img: &ColorImage) -> Result<Trace> {
+    let cfg = Config::default();
+    let svg = match candidate {
+        "vanilla" => cfg.build()?.to_svg(img)?,
+        "defringe" => i2v_core::alpha_pipeline(&cfg, 128)?.to_svg(img)?,
+        other => anyhow::bail!("unknown candidate {other}"),
     };
 
-    let svg = Config::default().build()?.to_svg(&img)?;
+    let source =
+        image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.pixels.clone())
+            .context("source pixels didn't fit width*height*4")?;
+    let rendered = i2v_core::metrics::render_svg(&svg, img.width as u32, img.height as u32)
+        .map_err(anyhow::Error::msg)?;
+    let (mean_err, p99_err) = rgba_error(&source, &rendered);
 
-    Ok(Stats {
-        name: path.file_name().unwrap().to_string_lossy().into_owned(),
+    Ok(Trace {
         paths: svg.matches("<path").count(),
         colors: count_distinct_fills(&svg),
         bytes: svg.len(),
+        mean_err,
+        p99_err,
+        ssim: ssim(&source, &rendered),
     })
 }
 
@@ -47,6 +57,28 @@ fn count_distinct_fills(svg: &str) -> usize {
     fills.sort_unstable();
     fills.dedup();
     fills.len()
+}
+
+/// Acceptance rule (docs/SPEC.md §6): a candidate only counts as an
+/// improvement over vanilla if it didn't make the image look worse.
+/// `ERR_TOLERANCE` absorbs float noise, not real regressions.
+const ERR_TOLERANCE: f64 = 0.5;
+const SSIM_TOLERANCE: f64 = 0.002;
+
+fn verdict(baseline: &Trace, candidate: &Trace) -> &'static str {
+    let quality_ok = candidate.mean_err <= baseline.mean_err + ERR_TOLERANCE
+        && candidate.ssim >= baseline.ssim - SSIM_TOLERANCE;
+    if !quality_ok {
+        return "REGRESSION";
+    }
+    let improved = candidate.colors < baseline.colors
+        || candidate.paths < baseline.paths
+        || candidate.mean_err < baseline.mean_err - ERR_TOLERANCE;
+    if improved {
+        "PASS (improved)"
+    } else {
+        "PASS (no change)"
+    }
 }
 
 fn main() -> Result<()> {
@@ -66,24 +98,75 @@ fn main() -> Result<()> {
 
     if entries.is_empty() {
         eprintln!(
-            "corpus is empty ({}). Populate it per docs/SPEC.md \u{a7}7 before trusting this table.",
+            "corpus is empty ({}). Run `cargo run -p i2v-bench --bin gen_corpus` first.",
             corpus.display()
         );
         return Ok(());
     }
 
     println!(
-        "{:<28} {:>8} {:>8} {:>10}",
-        "file", "paths", "colors", "bytes"
+        "{:<24} {:<10} {:>6} {:>7} {:>8} {:>9} {:>7} {:>6}  verdict",
+        "file", "variant", "paths", "colors", "bytes", "mean_err", "p99", "ssim"
     );
-    for path in entries {
-        match trace_stats(&path) {
-            Ok(s) => println!(
-                "{:<28} {:>8} {:>8} {:>10}",
-                s.name, s.paths, s.colors, s.bytes
-            ),
-            Err(e) => eprintln!("{}: {e}", path.display()),
+
+    let mut regressions = Vec::new();
+    for path in &entries {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let decoded = match image::open(path) {
+            Ok(d) => d.to_rgba8(),
+            Err(e) => {
+                eprintln!("{}: {e}", path.display());
+                continue;
+            }
+        };
+        let img = ColorImage {
+            pixels: decoded.clone().into_raw(),
+            width: decoded.width() as usize,
+            height: decoded.height() as usize,
+        };
+
+        let vanilla = match trace_and_score("vanilla", &img) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{name} vanilla: {e}");
+                continue;
+            }
+        };
+        println!(
+            "{:<24} {:<10} {:>6} {:>7} {:>8} {:>9.2} {:>7.1} {:>6.3}  baseline",
+            name,
+            "vanilla",
+            vanilla.paths,
+            vanilla.colors,
+            vanilla.bytes,
+            vanilla.mean_err,
+            vanilla.p99_err,
+            vanilla.ssim,
+        );
+
+        for candidate in ["defringe"] {
+            match trace_and_score(candidate, &img) {
+                Ok(t) => {
+                    let v = verdict(&vanilla, &t);
+                    println!(
+                        "{:<24} {:<10} {:>6} {:>7} {:>8} {:>9.2} {:>7.1} {:>6.3}  {}",
+                        "", candidate, t.paths, t.colors, t.bytes, t.mean_err, t.p99_err, t.ssim, v
+                    );
+                    if v == "REGRESSION" {
+                        regressions.push(format!("{name} [{candidate}]"));
+                    }
+                }
+                Err(e) => eprintln!("{name} {candidate}: {e}"),
+            }
         }
+    }
+
+    if !regressions.is_empty() {
+        eprintln!("\n{} regression(s):", regressions.len());
+        for r in &regressions {
+            eprintln!("  - {r}");
+        }
+        anyhow::bail!("quality regressed on {} file(s)", regressions.len());
     }
 
     Ok(())

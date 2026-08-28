@@ -13,6 +13,8 @@
 //!
 //! [keying]: https://github.com/visioncortex/vtracer/blob/1.0.0-alpha.3/crates/vtracer/src/frontend/keying.rs
 
+pub mod metrics;
+
 use vtracer::frontend::Frontend;
 use vtracer::ir::Segmentation;
 use vtracer::{Color, ColorImage, Error, PointI32};
